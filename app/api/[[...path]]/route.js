@@ -1,104 +1,209 @@
+import { NextRequest, NextResponse } from 'next/server'
 import { MongoClient } from 'mongodb'
 import { v4 as uuidv4 } from 'uuid'
-import { NextResponse } from 'next/server'
 
-// MongoDB connection
-let client
-let db
+const client = new MongoClient(process.env.MONGO_URL)
+const dbName = process.env.DB_NAME || 'teacherhub'
 
-async function connectToMongo() {
-  if (!client) {
-    client = new MongoClient(process.env.MONGO_URL)
-    await client.connect()
-    db = client.db(process.env.DB_NAME)
-  }
-  return db
-}
-
-// Helper function to handle CORS
-function handleCORS(response) {
-  response.headers.set('Access-Control-Allow-Origin', '*')
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  response.headers.set('Access-Control-Allow-Credentials', 'true')
-  return response
-}
-
-// OPTIONS handler for CORS
-export async function OPTIONS() {
-  return handleCORS(new NextResponse(null, { status: 200 }))
-}
-
-// Route handler function
-async function handleRoute(request, { params }) {
-  const { path = [] } = params
-  const route = `/${path.join('/')}`
-  const method = request.method
-
+async function connectToDatabase() {
   try {
-    const db = await connectToMongo()
+    await client.connect()
+    return client.db(dbName)
+  } catch (error) {
+    console.error('Database connection error:', error)
+    throw error
+  }
+}
 
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/root' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
+export async function GET(request, { params }) {
+  const path = params.path?.join('/') || ''
+  
+  try {
+    const db = await connectToDatabase()
+    
+    // Get all teachers
+    if (path === 'teachers') {
+      const teachers = await db.collection('teachers').find({}).toArray()
+      return NextResponse.json({ teachers })
     }
-    // Root endpoint - GET /api/root (since /api/ is not accessible with catch-all)
-    if (route === '/' && method === 'GET') {
-      return handleCORS(NextResponse.json({ message: "Hello World" }))
+    
+    // Get all students
+    if (path === 'students') {
+      const students = await db.collection('students').find({}).toArray()
+      return NextResponse.json({ students })
     }
-
-    // Status endpoints - POST /api/status
-    if (route === '/status' && method === 'POST') {
-      const body = await request.json()
-      
-      if (!body.client_name) {
-        return handleCORS(NextResponse.json(
-          { error: "client_name is required" }, 
-          { status: 400 }
-        ))
+    
+    // Get single teacher
+    if (path.startsWith('teachers/')) {
+      const teacherId = path.split('/')[1]
+      const teacher = await db.collection('teachers').findOne({ id: teacherId })
+      if (!teacher) {
+        return NextResponse.json({ error: 'Teacher not found' }, { status: 404 })
       }
-
-      const statusObj = {
-        id: uuidv4(),
-        client_name: body.client_name,
-        timestamp: new Date()
+      return NextResponse.json({ teacher })
+    }
+    
+    // Get single student
+    if (path.startsWith('students/')) {
+      const studentId = path.split('/')[1]
+      const student = await db.collection('students').findOne({ id: studentId })
+      if (!student) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 })
       }
-
-      await db.collection('status_checks').insertOne(statusObj)
-      return handleCORS(NextResponse.json(statusObj))
+      return NextResponse.json({ student })
     }
-
-    // Status endpoints - GET /api/status
-    if (route === '/status' && method === 'GET') {
-      const statusChecks = await db.collection('status_checks')
-        .find({})
-        .limit(1000)
-        .toArray()
-
-      // Remove MongoDB's _id field from response
-      const cleanedStatusChecks = statusChecks.map(({ _id, ...rest }) => rest)
-      
-      return handleCORS(NextResponse.json(cleanedStatusChecks))
-    }
-
-    // Route not found
-    return handleCORS(NextResponse.json(
-      { error: `Route ${route} not found` }, 
-      { status: 404 }
-    ))
-
+    
+    return NextResponse.json({ error: 'Endpoint not found' }, { status: 404 })
   } catch (error) {
     console.error('API Error:', error)
-    return handleCORS(NextResponse.json(
-      { error: "Internal server error" }, 
-      { status: 500 }
-    ))
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// Export all HTTP methods
-export const GET = handleRoute
-export const POST = handleRoute
-export const PUT = handleRoute
-export const DELETE = handleRoute
-export const PATCH = handleRoute
+export async function POST(request, { params }) {
+  const path = params.path?.join('/') || ''
+  
+  try {
+    const db = await connectToDatabase()
+    const body = await request.json()
+    
+    // Create new teacher
+    if (path === 'teachers') {
+      const teacher = {
+        id: uuidv4(),
+        name: body.name,
+        email: body.email,
+        phone: body.phone,
+        department: body.department,
+        subject: body.subject,
+        hireDate: body.hireDate,
+        salary: body.salary,
+        qualification: body.qualification,
+        experience: body.experience,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      
+      await db.collection('teachers').insertOne(teacher)
+      return NextResponse.json({ teacher })
+    }
+    
+    // Create new student
+    if (path === 'students') {
+      const student = {
+        id: uuidv4(),
+        name: body.name,
+        email: body.email,
+        phone: body.phone,
+        grade: body.grade,
+        section: body.section,
+        teacherId: body.teacherId,
+        parentName: body.parentName,
+        parentPhone: body.parentPhone,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      
+      await db.collection('students').insertOne(student)
+      return NextResponse.json({ student })
+    }
+    
+    return NextResponse.json({ error: 'Endpoint not found' }, { status: 404 })
+  } catch (error) {
+    console.error('API Error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function PUT(request, { params }) {
+  const path = params.path?.join('/') || ''
+  
+  try {
+    const db = await connectToDatabase()
+    const body = await request.json()
+    
+    // Update teacher
+    if (path.startsWith('teachers/')) {
+      const teacherId = path.split('/')[1]
+      const updateData = {
+        ...body,
+        updatedAt: new Date()
+      }
+      
+      const result = await db.collection('teachers').updateOne(
+        { id: teacherId },
+        { $set: updateData }
+      )
+      
+      if (result.matchedCount === 0) {
+        return NextResponse.json({ error: 'Teacher not found' }, { status: 404 })
+      }
+      
+      const teacher = await db.collection('teachers').findOne({ id: teacherId })
+      return NextResponse.json({ teacher })
+    }
+    
+    // Update student
+    if (path.startsWith('students/')) {
+      const studentId = path.split('/')[1]
+      const updateData = {
+        ...body,
+        updatedAt: new Date()
+      }
+      
+      const result = await db.collection('students').updateOne(
+        { id: studentId },
+        { $set: updateData }
+      )
+      
+      if (result.matchedCount === 0) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 })
+      }
+      
+      const student = await db.collection('students').findOne({ id: studentId })
+      return NextResponse.json({ student })
+    }
+    
+    return NextResponse.json({ error: 'Endpoint not found' }, { status: 404 })
+  } catch (error) {
+    console.error('API Error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request, { params }) {
+  const path = params.path?.join('/') || ''
+  
+  try {
+    const db = await connectToDatabase()
+    
+    // Delete teacher
+    if (path.startsWith('teachers/')) {
+      const teacherId = path.split('/')[1]
+      const result = await db.collection('teachers').deleteOne({ id: teacherId })
+      
+      if (result.deletedCount === 0) {
+        return NextResponse.json({ error: 'Teacher not found' }, { status: 404 })
+      }
+      
+      return NextResponse.json({ message: 'Teacher deleted successfully' })
+    }
+    
+    // Delete student
+    if (path.startsWith('students/')) {
+      const studentId = path.split('/')[1]
+      const result = await db.collection('students').deleteOne({ id: studentId })
+      
+      if (result.deletedCount === 0) {
+        return NextResponse.json({ error: 'Student not found' }, { status: 404 })
+      }
+      
+      return NextResponse.json({ message: 'Student deleted successfully' })
+    }
+    
+    return NextResponse.json({ error: 'Endpoint not found' }, { status: 404 })
+  } catch (error) {
+    console.error('API Error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
