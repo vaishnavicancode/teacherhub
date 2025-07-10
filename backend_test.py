@@ -12,7 +12,7 @@ from datetime import datetime
 import os
 
 # Get base URL from environment or use default
-BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'https://03bcb5c0-91f4-4b82-9bdd-c241f506cc8c.preview.emergentagent.com')
+BASE_URL = os.getenv('NEXT_PUBLIC_BASE_URL', 'http://localhost:3000')
 API_BASE = f"{BASE_URL}/api"
 
 class TeacherManagementAPITester:
