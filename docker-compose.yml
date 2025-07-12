@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - DB_NAME=teacherhub_db
+      - NEXT_PUBLIC_BASE_URL=http://localhost:3000
+    depends_on:
+      - mongo
+    networks:
+      - teacherhub-network
+
+  mongo:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=teacherhub_db
+    networks:
+      - teacherhub-network
+
+volumes:
+  mongo-data:
+
+networks:
+  teacherhub-network:
+    driver: bridge
